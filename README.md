@@ -1,7 +1,7 @@
 # ENPM-818N-Group-12
 
 ### TODO'S Phase 2
-- [x] Config Map, Cluster Role & ClusterRoleBinding (turgut)
+[x] Config Map, Cluster Role & ClusterRoleBinding (turgut)
 - [x] Service, Service Account, StateFulSet (Riti)
 - [x] Secret, Role, PodDistribution (Sharanya)
 - [x] Deployment, Namespace, Pods (Eshaan)

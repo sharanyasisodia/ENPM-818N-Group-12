@@ -11,7 +11,10 @@
 - [x] Common AWS Account (Riti)
 
 ### Git Help
-- `git stash`: Temporarily stores all modified tracked files.
+- `git stash save -u "<name your changes to identify>"`: Temporarily stores all modified tracked files.
+- `git stash apply stash@{0}`: apply recent stashed changes.
+OR
+- `git stash apply`: apply recent stashed chnages.
 - `git pull --rebase`: Fetches the latest changes from the remote repository and applies your changes on top of them.
 - `git checkout <branch-name>`: checks out the branch created on UI or already created branch.
 - `git checkout -b <branch-name>`: Creates a new branch and switches to it.

@@ -1,0 +1,114 @@
+name: Create AWS EKS Cluster
+
+on:
+  workflow_dispatch: # Trigger manually from the GitHub Actions UI
+  push:               # Optional: Trigger on push to a specific branch
+    branches:
+      - main
+
+jobs:
+  setup-eks:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Step 1: Checkout the repository
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    # Step 2: Configure AWS CLI
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v3
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1 # Change to your desired AWS region
+
+    # Step 3: Install eksctl
+    - name: Install eksctl
+      run: |
+        curl -sL https://github.com/weaveworks/eksctl/releases/download/v0.153.0/eksctl_Linux_amd64.tar.gz | tar xz -C /usr/local/bin
+        eksctl version
+
+    # Step 4: Create EKS Cluster
+    - name: Create EKS Cluster
+      id: create-cluster
+      run: |
+        eksctl create cluster \
+          --name my-eks-cluster \
+          --region us-east-1 \
+          --nodegroup-name standard-workers \
+          --node-type c1.xlarge \
+          --nodes 2 \
+          --nodes-min 1 \
+          --nodes-max 3 \
+          --managed
+      continue-on-error: true
+
+    # Rollback EKS cluster creation if it fails
+    - name: Rollback EKS Cluster
+      if: failure() && steps.create-cluster.outcome == 'failure'
+      run: |
+        eksctl delete cluster \
+          --name my-eks-cluster \
+          --region us-east-1
+
+    - name: ssh_keys
+      id: ssh_keys
+      run: |
+       echo  '${{ secrets.ssh_key}}' > my-key-pair
+       chmod 600 my-key-pair
+
+    # Step 5: Create EC2 instance as EKS client
+    - name: Create EC2 Instance
+      id: create-ec2
+      run: |
+        INSTANCE_ID=$(aws ec2 run-instances \
+          --image-id ami-0453ec754f44f9a4a  \ # Replace with a valid AMI ID for your region
+          --count 1 \
+          --instance-type t2.micro \
+          --key-name my-key-pair \ # Replace with your key pair
+          --security-group-ids sg-006f42058d45d7905 \ # Replace with your security group
+          --subnet-id subnet-0b0f1c742f2e32945 \ # Replace with your subnet
+          --query 'Instances[0].InstanceId' \
+          --output text)
+        echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
+
+    # Rollback EC2 instance creation if it fails
+    - name: Rollback EC2 Instance
+      if: failure() && steps.create-ec2.outcome == 'failure'
+      run: |
+        if [ -n "${{ env.INSTANCE_ID }}" ]; then
+          aws ec2 terminate-instances --instance-ids ${{ env.INSTANCE_ID }}
+        fi
+
+    # Step 6: Configure kubectl
+    - name: Configure kubectl
+      run: |
+        aws eks update-kubeconfig --region us-east-1 --name my-eks-cluster
+        kubectl get nodes
+
+    # Step 7: Deploy Kubernetes Resources
+    - name: Deploy Application
+      id: deploy-app
+      run: |
+        wget https://raw.githubusercontent.com/open-telemetry/opentelemetry-demo/refs/heads/main/kubernetes/opentelemetry-demo.yaml
+        kubectl apply -f opentelemetry-demo.yaml
+        kubectl port-forward svc/opentelemetry-demo-frontendproxy 8080:8080 --address 0.0.0.0
+      continue-on-error: true
+
+    # Rollback Kubernetes deployment if it fails
+    - name: Rollback Kubernetes Resources
+      if: failure() && steps.deploy-app.outcome == 'failure'
+      run: |
+        kubectl delete -f opentelemetry-demo.yaml
+
+    # Rollback entire setup if needed
+    - name: Full Rollback
+      if: failure()
+      run: |
+        eksctl delete cluster \
+          --name my-eks-cluster \
+          --region us-east-1
+        if [ -n "${{ env.INSTANCE_ID }}" ]; then
+          aws ec2 terminate-instances --instance-ids ${{ env.INSTANCE_ID }}
+        fi

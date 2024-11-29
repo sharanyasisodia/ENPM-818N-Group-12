@@ -1,0 +1,56 @@
+name: Create AWS EKS Cluster
+
+on:
+  workflow_dispatch: # Trigger manually from the GitHub Actions UI
+  push:               # Optional: Trigger on push to a specific branch
+    branches:
+      - main
+
+jobs:
+  setup-eks:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Step 1: Checkout the repository
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    # Step 2: Configure AWS CLI
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v3
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1 # Change to your desired AWS region
+
+    # Step 3: Install eksctl
+    - name: Install eksctl
+      run: |
+        curl -sL https://github.com/weaveworks/eksctl/releases/download/v0.153.0/eksctl_Linux_amd64.tar.gz | tar xz -C /usr/local/bin
+        eksctl version
+
+    # Step 4: Create EKS Cluster
+    - name: Create EKS Cluster
+      run: |
+        eksctl create cluster \
+          --name my-eks-cluster \
+          --region us-east-1 \
+          --nodegroup-name standard-workers \
+          --node-type t3.medium \
+          --nodes 2 \
+          --nodes-min 1 \
+          --nodes-max 3 \
+          --managed
+
+    # Step 5: Configure kubectl
+    - name: Configure kubectl
+      run: |
+        aws eks update-kubeconfig --region us-east-1 --name my-eks-cluster
+        kubectl get nodes
+
+    # Optional: Deploy Kubernetes Resources
+    - name: Deploy Application
+      run: |
+        wget https://raw.githubusercontent.com/open-telemetry/opentelemetry-demo/refs/heads/main/kubernetes/opentelemetry-demo.yaml
+        kubectl apply -f opentelemetry-demo.yaml
+        kubectl port-forward svc/opentelemetry-demo-frontendproxy 8080:8080 --address 0.0.0.0

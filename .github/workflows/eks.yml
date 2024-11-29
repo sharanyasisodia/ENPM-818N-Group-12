@@ -31,6 +31,7 @@ jobs:
 
     # Step 4: Create EKS Cluster
     - name: Create EKS Cluster
+      id: create-cluster
       run: |
         eksctl create cluster \
           --name my-eks-cluster \
@@ -41,16 +42,67 @@ jobs:
           --nodes-min 1 \
           --nodes-max 3 \
           --managed
+      continue-on-error: true
 
-    # Step 5: Configure kubectl
+    # Rollback EKS cluster creation if it fails
+    - name: Rollback EKS Cluster
+      if: failure() && steps.create-cluster.outcome == 'failure'
+      run: |
+        eksctl delete cluster \
+          --name my-eks-cluster \
+          --region us-east-1
+
+    # Step 5: Create EC2 instance as EKS client
+    - name: Create EC2 Instance
+      id: create-ec2
+      run: |
+        INSTANCE_ID=$(aws ec2 run-instances \
+          --image-id ami-0abcdef1234567890 \ # Replace with a valid AMI ID for your region
+          --count 1 \
+          --instance-type t2.micro \
+          --key-name my-key-pair \ # Replace with your key pair
+          --security-group-ids sg-1234567890abcdef \ # Replace with your security group
+          --subnet-id subnet-12345678 \ # Replace with your subnet
+          --query 'Instances[0].InstanceId' \
+          --output text)
+        echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
+
+    # Rollback EC2 instance creation if it fails
+    - name: Rollback EC2 Instance
+      if: failure() && steps.create-ec2.outcome == 'failure'
+      run: |
+        if [ -n "${{ env.INSTANCE_ID }}" ]; then
+          aws ec2 terminate-instances --instance-ids ${{ env.INSTANCE_ID }}
+        fi
+
+    # Step 6: Configure kubectl
     - name: Configure kubectl
       run: |
         aws eks update-kubeconfig --region us-east-1 --name my-eks-cluster
         kubectl get nodes
 
-    # Optional: Deploy Kubernetes Resources
+    # Step 7: Deploy Kubernetes Resources
     - name: Deploy Application
+      id: deploy-app
       run: |
         wget https://raw.githubusercontent.com/open-telemetry/opentelemetry-demo/refs/heads/main/kubernetes/opentelemetry-demo.yaml
         kubectl apply -f opentelemetry-demo.yaml
         kubectl port-forward svc/opentelemetry-demo-frontendproxy 8080:8080 --address 0.0.0.0
+      continue-on-error: true
+
+    # Rollback Kubernetes deployment if it fails
+    - name: Rollback Kubernetes Resources
+      if: failure() && steps.deploy-app.outcome == 'failure'
+      run: |
+        kubectl delete -f opentelemetry-demo.yaml
+
+    # Rollback entire setup if needed
+    - name: Full Rollback
+      if: failure()
+      run: |
+        eksctl delete cluster \
+          --name my-eks-cluster \
+          --region us-east-1
+        if [ -n "${{ env.INSTANCE_ID }}" ]; then
+          aws ec2 terminate-instances --instance-ids ${{ env.INSTANCE_ID }}
+        fi

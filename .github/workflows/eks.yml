@@ -52,10 +52,10 @@ jobs:
           --name my-eks-cluster \
           --region us-east-1
 
-    - name: ssh-keys
-      id: ssh-keys
+    - name: ssh_keys
+      id: ssh_keys
       run: |
-       echo  ${{ secrets.ssh-key}} > my-key-pair
+       echo  '${{ secrets.ssh_key}}' > my-key-pair
        chmod 600 my-key-pair
 
     # Step 5: Create EC2 instance as EKS client

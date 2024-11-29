@@ -37,7 +37,7 @@ jobs:
           --name my-eks-cluster \
           --region us-east-1 \
           --nodegroup-name standard-workers \
-          --node-type t3.medium \
+          --node-type c1.xlarge \
           --nodes 2 \
           --nodes-min 1 \
           --nodes-max 3 \
@@ -52,17 +52,23 @@ jobs:
           --name my-eks-cluster \
           --region us-east-1
 
+    - name: ssh-keys
+      id: ssh-keys
+      run: |
+       echo  ${{ secrets.ssh-key}} > my-key-pair
+       chmod 600 my-key-pair
+
     # Step 5: Create EC2 instance as EKS client
     - name: Create EC2 Instance
       id: create-ec2
       run: |
         INSTANCE_ID=$(aws ec2 run-instances \
-          --image-id ami-0abcdef1234567890 \ # Replace with a valid AMI ID for your region
+          --image-id ami-0453ec754f44f9a4a  \ # Replace with a valid AMI ID for your region
           --count 1 \
           --instance-type t2.micro \
           --key-name my-key-pair \ # Replace with your key pair
-          --security-group-ids sg-1234567890abcdef \ # Replace with your security group
-          --subnet-id subnet-12345678 \ # Replace with your subnet
+          --security-group-ids sg-006f42058d45d7905 \ # Replace with your security group
+          --subnet-id subnet-0b0f1c742f2e32945 \ # Replace with your subnet
           --query 'Instances[0].InstanceId' \
           --output text)
         echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
